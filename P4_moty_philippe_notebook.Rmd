@@ -1,0 +1,250 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+Import des données
+```{r}
+dispo_alimentaire <-read.csv(
+  'D:/ETUDES/IT/OC/DATA/PROJETS/PROJET-4/DAN-P4-FAO/dispo_alimentaire.csv'
+  ,header = TRUE
+  ,encoding='UTF-8')
+
+insecurite_alimentaire <- read.csv(
+  'D:/ETUDES/IT/OC/DATA/PROJETS/PROJET-4/DAN-P4-FAO/sous_nutrition.csv'
+  ,encoding = 'UTF-8')
+
+population <-read.csv('D:/ETUDES/IT/OC/DATA/PROJETS/PROJET-4/DAN-P4-FAO/population.csv'
+  ,encoding = 'UTF-8')
+
+aide_alimentaire <- read.csv(
+  'D:/ETUDES/IT/OC/DATA/PROJETS/PROJET-4/DAN-P4-FAO/aide_alimentaire.csv'
+  ,encoding = 'UTF-8')
+
+```
+QUESTION 1
+```{r}
+#Création df population2017 | population filtré sur 2017 et conversion à la bonne unité
+population2017<- population[population$Année==2017,] 
+colnames(population2017)<-c('Zone','Année','nb.Population') 
+population2017$nb.Population <- population2017$nb.Population*1000
+sprintf("Population mondiale en 2017 : %.0f personnes",sum(population2017$nb.Population, na.rm=TRUE))
+```
+```{r}
+#Preparer les données
+#Transformer les intervalles en dates en untilisant une fonction moyenne pour la colonne
+sous.nutrition2017<- data.frame(as.numeric(substr(insecurite_alimentaire$Année,1,4)),as.numeric(substr(insecurite_alimentaire$Année,6,9)))
+sous.nutrition2017 <- cbind(insecurite_alimentaire,rowMeans(sous.nutrition2017))
+sous.nutrition2017 <-   sous.nutrition2017[,c(-2)] 
+#Renommer les colonnes
+colnames(sous.nutrition2017) <- c('Zone','nb.pers.en.sousnutrition','Année')
+sous.nutrition2017<-sous.nutrition2017[,c('Zone','Année','nb.pers.en.sousnutrition')]
+sous.nutrition2017<-merge(population,sous.nutrition2017, by=c("Zone","Année"))
+colnames(sous.nutrition2017) <- c('Zone','Année','nb.Population','nb.pers.en.sousnutrition')
+#convertitr dans les bonnes unités
+sous.nutrition2017$nb.pers.en.sousnutrition <-as.numeric(sous.nutrition2017$nb.pers.en.sousnutrition)*1000000
+sous.nutrition2017$nb.Population <- sous.nutrition2017$nb.Population*1000
+#Filtrer sur 2017
+sous.nutrition2017 <-sous.nutrition2017[sous.nutrition2017$Année==2017,]
+```
+```{r}
+#calcul de la sous nutrition mondiale
+sprintf(' %.1f%% de la popultation mondiale est considéré comme en sous nutrition en 2017',sum(sous.nutrition2017$nb.pers.en.sousnutrition,na.rm=TRUE) / sum(sous.nutrition2017$nb.Population,na.rm=TRUE)*100)
+```
+```{r}
+#Nombre de personnes qui souffrent de sous-nutrition
+sprintf("Nombre de personne en sous alimentation dans le monde : %.0f personnes",sum(sous.nutrition2017$nb.pers.en.sousnutrition,na.rm=TRUE))
+
+```
+QUESTION 2
+Le nombre théorique de personnes qui pourraient être nourries. 
+
+```{r}
+#Somme des Kcal disponible par pays
+dispo.Kcal.persJour <-aggregate(dispo_alimentaire$Disponibilité.alimentaire..Kcal.personne.jour. ~ Zone, dispo_alimentaire, sum )
+dispo.Kcal.persJour<- merge(population2017, dispo.Kcal.persJour, na.rm=TRUE)
+colnames(dispo.Kcal.persJour) <- c('Zone','Année','nb.Population','Kcal.pers.jour')
+#nombre théorique de personne que l'on peut nourrir 
+Kcal.dispo.pays.jour <- dispo.Kcal.persJour$nb.Population*dispo.Kcal.persJour$Kcal.pers.jour
+dispo.Kcal.persJour<-cbind(dispo.Kcal.persJour,Kcal.dispo.pays.jour)
+calories.jour.necessaire <-2000
+nb.pers.nourrissable <- dispo.Kcal.persJour$Kcal.dispo.pays / calories.jour.necessaire
+dispo.Kcal.persJour <- cbind(dispo.Kcal.persJour,nb.pers.nourrissable)
+```
+```{r}
+#Nombre de personnes qui peuvent être nourrit avec les ressources de 2017 en fonction de calorie.jour.necessaire
+sprintf("Avec les disponibilités de 2017 et un besoin calorique de %.0f ont peut nourrir %.0f personnes",calories.jour.necessaire,sum(dispo.Kcal.persJour$nb.pers.nourrissable))
+
+```
+QUESTION 3 
+le nombre théorique de personnes qui pourraient être nourries. à partir de la la disponibilité alimentaire des produits végétaux ; ressouce vegetale / 2000 Kcal
+
+```{r}
+#Selection dispo Kcal vegetale
+dispo.Kcal.vegetale <- subset(dispo_alimentaire,Origine =='vegetale')
+#somme des Kcal vegetale
+dispo.Kcal.vegetale <- aggregate(dispo.Kcal.vegetale$Disponibilité.alimentaire..Kcal.personne.jour.~Zone, dispo.Kcal.vegetale,sum)
+dispo.Kcal.vegetale <- merge(population2017,dispo.Kcal.vegetale,na.rm=TRUE)
+#préparation des données : merge entre population2017 et dispo végétale
+dispo.Kcal.vegetale<- merge(population2017, dispo.Kcal.vegetale, na.rm=TRUE)
+colnames(dispo.Kcal.vegetale) <- c('Zone','Année','nb.Population','Kcal.pers.jour')
+dispo.Kcal.vegetale$nb.Population<-dispo.Kcal.vegetale$nb.Population
+#Calcul de la disponibilité végétale par pays et par jour
+Kcal.vegetale.pays.jour <- dispo.Kcal.vegetale$nb.Population * dispo.Kcal.vegetale$Kcal.pers.jour
+dispo.Kcal.vegetale <- cbind(dispo.Kcal.vegetale,Kcal.vegetale.pays.jour)
+```
+```{r}
+#Calcul nb.pers.nourrissable en fonction des calories végétales
+calories.jour.necessaire <-2000
+nb.pers.nourrissable <- dispo.Kcal.vegetale$Kcal.vegetale.pays.jour / calories.jour.necessaire
+# création de la colonne nb.pers.nourrissable pour faire la somme ensuite
+dispo.Kcal.vegetale <-cbind(dispo.Kcal.vegetale,nb.pers.nourrissable)
+
+```
+```{r}
+#Calcul : somme des personnes nourrissables dans le monde par jour
+sprintf("%.0f personnes peuvent être nourrit par jour avec les ressources végétales journalières mondiales de 2017",sum(dispo.Kcal.vegetale$nb.pers.nourrissable))
+
+```
+
+QUESTION 4 
+Utilisation de la disponibilité intérieure
+```{r}
+utilisation.dispo <- dispo_alimentaire[,c("Zone","Aliments.pour.animaux","Autres.Utilisations","Disponibilité.intérieure","Exportations...Quantité","Importations...Quantité","Nourriture","Pertes" ,"Production","Semences","Traitement","Variation.de.stock")]
+taux.utilisation.dispo.aliment.pays <- dispo_alimentaire[,1:5] 
+taux.utilisation.dispo.aliment.pays <- cbind(taux.utilisation.dispo.aliment.pays, dispo_alimentaire[,10:18])
+taux.utilisation.dispo.aliment.pays <- merge(sous.nutrition2017,taux.utilisation.dispo.aliment.pays)
+taux.utilisation.dispo.aliment.pays$nb.Population <- taux.utilisation.dispo.aliment.pays$nb.Population*1000
+```
+```{r}
+sprintf("%.2f %% de la disponibilité intérieure sont consacrés à l'alimentation animale",sum(utilisation.dispo$Aliments.pour.animaux ,na.rm = TRUE)/sum(utilisation.dispo$Disponibilité.intérieure,na.rm = TRUE)*100)
+```
+```{r}
+sprintf("%.2f %% de la disponibilité intérieure sont consacrés pertes",sum(utilisation.dispo$Pertes ,na.rm = TRUE)/sum(utilisation.dispo$Disponibilité.intérieure,na.rm = TRUE)*100)
+
+```
+```{r}
+sprintf("%.2f %% de la disponibilité intérieure sont consacrés à la nourriture",sum(utilisation.dispo$Nourriture ,na.rm = TRUE)/sum(utilisation.dispo$Disponibilité.intérieure,na.rm = TRUE)*100)
+```
+MELANIE 
+```{r}
+#les pays pour lesquels la proportion de personnes sous-alimentées est la plus forte en 2017
+#Création de la colonne calculée 
+sous.nutrition2017 <- cbind(sous.nutrition2017,sous.nutrition2017$nb.pers.en.sousnutrition/sous.nutrition2017$nb.Population*100)
+colnames(sous.nutrition2017)<- c('Zone','Année','nb.pop','nb.pop.sousnutrition','Taux.de.sous-nutrition')
+```
+```{r}
+#
+sous.nutrition2017 <- sous.nutrition2017[order(sous.nutrition2017[,'Taux.de.sous-nutrition'],decreasing = TRUE),]
+sous.nutrition2017 <- sous.nutrition2017[,c(-2,-3,-4)] 
+head(sous.nutrition2017)
+View(sous.nutrition2017)
+```
+
+
+
+```{r}
+#Les pays qui ont le plus bénéficiés de d'aide depuis 2013
+pays.bénéficiaire.aide.2013 <- aggregate(Valeur~Pays.bénéficiaire,aide_alimentaire,sum)
+head(pays.bénéficiaire.aide.2013)
+pays.bénéficiaire.aide.2013[order(pays.bénéficiaire.aide.2013[,2],decreasing = T),]
+```
+
+```{r}
+#Les pays ayant le plus de disponibilité/habitant
+pays.bénéficiaire.aide.2013 <- aggregate(Disponibilité.alimentaire..Kcal.personne.jour.~Zone,dispo_alimentaire,sum,na.rm=T)
+pays.bénéficiaire.aide.2013[order(aggregate(Disponibilité.alimentaire..Kcal.personne.jour.~Zone,dispo_alimentaire,sum,na.rm=T)[,2],decreasing = T),]
+```
+
+```{r}
+#Les pays ayant le moins de disponibilité/habitant
+pays.bénéficiaire.aide.2013[order(aggregate(Disponibilité.alimentaire..Kcal.personne.jour.~Zone,dispo_alimentaire,sum,na.rm=T)[,2],decreasing = F),]
+```
+
+JULIEN
+
+```{r}
+cereales <-read.csv(
+  'D:/ETUDES/IT/OC/DATA/PROJETS/PROJET-4/DAN-P4-FAO/FAOSTAT.csv'
+  ,header = TRUE
+  ,encoding='UTF-8')
+
+cereales <-cereales[,c('Zone','Produit','Élément','Valeur')]
+colnames(cereales)<-c('Zone','Produit','Element','Valeur.en.milliers_de_tonnes')
+```
+```{r}
+#Editer la liste des céréales du tableau céréales
+unique(cereales[,'Produit'])
+```
+```{r}
+# filtrer le df dispo_alimentaire en focntion des céréales
+cereales <- subset(dispo_alimentaire, 
+                Produit == 'Blé' | 
+                 Produit == 'Riz' | 
+                 Produit == 'Orge'|
+                 Produit == 'Maïs'|
+                 Produit == 'Seigle'|
+                 Produit == 'Avoine'|
+                 Produit == 'Millet'|
+                 Produit == 'Sorgho'|
+                 Produit == 'Céréales, Autres') 
+head(cereales)
+
+```
+
+
+```{r}
+#Part des céréales consacrés à l'alimentation animal
+sprintf("%.2f%% des céréales sont consacrés à l'alimentation animale",sum(cereales$Aliments.pour.animaux,na.rm=T)/sum(cereales$Disponibilité.intérieure,na.rm=T)*100)
+```
+
+```{r}
+#Par des céréales consacrée à l'alimentation humaine
+sprintf("%.2f%% des céréales sont consacrés à l'alimentation humaine",sum(cereales$Nourriture,na.rm=T)/sum(cereales$Disponibilité.intérieure,na.rm=T)*100)
+```
+
+Proportion en sous nutrition et en manioc exportée en Thaïlande ;
+
+```{r} 
+# df Thaïlande, 2017,population, population en sous-nutrition
+Thaïlande.sousNutrtion<- data.frame(as.numeric(substr(insecurite_alimentaire$Année,1,4)),as.numeric(substr(insecurite_alimentaire$Année,6,9)))
+Thaïlande.sousNutrtion <- cbind(insecurite_alimentaire,rowMeans(Thaïlande.sousNutrtion))
+Thaïlande.sousNutrtion <-   Thaïlande.sousNutrtion[,c(-2)] 
+colnames(Thaïlande.sousNutrtion) <- c('Zone','nb.pers.en.sousnutrition','Année')
+Thaïlande.sousNutrtion<-Thaïlande.sousNutrtion[,c('Zone','Année','nb.pers.en.sousnutrition')]
+Thaïlande.sousNutrtion<-merge(population,Thaïlande.sousNutrtion, by=c("Zone","Année"))
+colnames(Thaïlande.sousNutrtion) <- c('Zone','Année','nb.Population','nb.pers.en.sousnutrition')
+Thaïlande.sousNutrtion <- Thaïlande.sousNutrtion[Thaïlande.sousNutrtion$Année==2017,]
+Thaïlande.sousNutrtion$nb.pers.en.sousnutrition <-as.numeric(Thaïlande.sousNutrtion$nb.pers.en.sousnutrition)*1000000
+Thaïlande.sousNutrtion$nb.Population <- Thaïlande.sousNutrtion$nb.Population*1000
+Thaïlande.sousNutrtion <-Thaïlande.sousNutrtion[Thaïlande.sousNutrtion$Année==2017,]
+Thaïlande.sousNutrtion <- Thaïlande.sousNutrtion[Thaïlande.sousNutrtion$Zone=='Thaïlande',]
+```
+```{r}
+#Manioc produit
+sprintf(" %.2f%% de la population de la Thaïlande souffre de sous-nutrtion soit %.0f personnes qui connaissent de sous-nutrition",Thaïlande.sousNutrtion$nb.pers.en.sousnutrition/Thaïlande.sousNutrtion$nb.Population *100,Thaïlande.sousNutrtion$nb.pers.en.sousnutrition)
+```
+```{r}
+#Manioc exporté
+Thaïlande.sousNutrtion <- dispo_alimentaire[dispo_alimentaire$Zone=="Thaïlande",]
+Thaïlande.sousNutrtion <- Thaïlande.sousNutrtion[Thaïlande.sousNutrtion$Produit=='Manioc',]
+Thaïlande.sousNutrtion <- Thaïlande.sousNutrtion[,c('Zone','Produit','Exportations...Quantité','Production')]
+
+sprintf("Paradoxalement alors qu'une partie importante de la population manque de nourriture, %.2f %% du Manioc produit est exporté",Thaïlande.sousNutrtion$Exportations...Quantité/Thaïlande.sousNutrtion$Production*100)
+```
+
+
+
+
+```{r}
+#Tableau descriptif de l'utilisation des céréales par type de céréales et utilisation animale ou nourriture
+temp <- aggregate(Aliments.pour.animaux~Produit,cereales,sum)
+temp <- merge(temp,aggregate(Nourriture~Produit,cereales,sum))
+temp <- cbind(temp,(temp$Aliments.pour.animaux+temp$Nourriture))
+temp <- cbind(temp,temp$Aliments.pour.animaux/(temp$Aliments.pour.animaux+temp$Nourriture)*100)
+temp <- cbind(temp,temp$Nourriture/(temp$Aliments.pour.animaux+temp$Nourriture)*100)
+colnames(temp)<-c('Produit','Aliments.pour.animaux','Nourriture','Total.produit','tx.Aliments.pour.animaux','tx.Nourriture')
+head(temp)
+```
+
+
+
